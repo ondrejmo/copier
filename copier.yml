@@ -1,0 +1,122 @@
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: copier
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: copier
+
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+    - Ingress
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: copier
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: copier
+
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["*"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: copier
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: copier
+subjects:
+  - kind: ServiceAccount
+    name: copier
+    namespace: copier
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copier
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: copier
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: copier
+    spec:
+      serviceAccountName: copier
+      initContainers:
+        - name: shell-operator-intializer
+          image: flant/shell-operator:v1.0.3
+          command: 
+            - /bin/bash
+          args:
+            - -c
+            - >-
+              mkdir /hooks.dst/common;
+              cp /hooks.src/functions.sh /hooks.dst/common/functions.sh;
+              
+              for item in add_or_update_secret create_namespace delete_secret schedule_sync_secret; do
+                cp "/hooks.src/${item}" "/hooks.dst/${item}";
+                chmod +x "/hooks.dst/${item}";
+              done;
+          volumeMounts:
+            - name: hooks-src
+              mountPath: /hooks.src
+            - name: hooks-dst
+              mountPath: /hooks.dst
+      containers:
+        - name: shell-operator
+          image: flant/shell-operator:v1.0.3
+          env:
+            - name: LOG_LEVEL
+              value: info
+          volumeMounts:
+            - name: hooks-dst
+              mountPath: /hooks
+      volumes:
+        - name: hooks-dst
+          emptyDir: {}
+        - name: hooks-src
+          configMap:
+            name: copier-hooks
+            items:
+              - key: functions.sh
+                path: functions.sh
+              - key: add_or_update_secret
+                path: add_or_update_secret
+              - key: create_namespace
+                path: create_namespace
+              - key: delete_secret
+                path: delete_secret
+              - key: schedule_sync_secret
+                path: schedule_sync_secret

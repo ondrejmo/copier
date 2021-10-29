@@ -1,0 +1,18 @@
+---
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: copier
+
+resources:
+  - copier.yml
+
+configMapGenerator:
+  - name: copier-hooks
+    files:
+      - files/hooks/common/functions.sh
+      - files/hooks/add_or_update_secret
+      - files/hooks/create_namespace
+      - files/hooks/delete_secret
+      - files/hooks/schedule_sync_secret
